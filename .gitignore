@@ -6,7 +6,7 @@
 *.exe
 *.o
 *.so
-
+classes
 # Packages #
 ############
 # it's better to unpack these files and commit the raw source
@@ -46,6 +46,8 @@ Thumbs.db
 /build
 */build
 .m2
+/bin
+*/bin
 
 # IntelliJ specific files/directories
 out

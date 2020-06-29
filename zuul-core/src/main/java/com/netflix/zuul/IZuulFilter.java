@@ -15,8 +15,10 @@
  */
 package com.netflix.zuul;
 
+import com.netflix.zuul.exception.ZuulException;
+
 /**
- * BAse interface for ZuulFilters
+ * Base interface for ZuulFilters
  *
  * @author Mikey Cohen
  *         Date: 10/27/11
@@ -34,7 +36,8 @@ public interface IZuulFilter {
      * if shouldFilter() is true, this method will be invoked. this method is the core method of a ZuulFilter
      *
      * @return Some arbitrary artifact may be returned. Current implementation ignores it.
+	 * @throws ZuulException if an error occurs during execution.
      */
-    Object run();
+    Object run() throws ZuulException;
 
 }

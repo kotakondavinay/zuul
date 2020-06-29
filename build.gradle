@@ -6,7 +6,7 @@ buildscript {
 }
 
 plugins {
-    id 'nebula.netflixoss' version '2.2.9'
+    id 'nebula.netflixoss' version '3.4.0'
 }
 
 ext.githubProjectName = rootProject.name
@@ -15,6 +15,12 @@ idea {
     project {
         languageLevel = '1.7'
     }
+}
+
+configurations.all {
+    // Exclude old asm 3.x versions.
+    exclude group: 'asm', module: 'asm'
+    exclude group: 'asm', module: 'asm-all'
 }
 
 subprojects {
@@ -27,10 +33,18 @@ subprojects {
     }
 
     group = "com.netflix.${githubProjectName}"
+    
+    sourceCompatibility = '1.7'
+    targetCompatibility = '1.7'
 
     sourceSets.test.java.srcDir 'src/main/java'
 
     tasks.withType(Javadoc).each {
         it.classpath = sourceSets.main.compileClasspath
+    }
+
+    test {
+        forkEvery = 1
+        maxParallelForks = 1
     }
 }

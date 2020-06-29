@@ -13,7 +13,7 @@
  *      See the License for the specific language governing permissions and
  *      limitations under the License.
  */
-package scripts.preProcess
+package filters.pre
 
 import com.netflix.config.DynamicBooleanProperty
 import com.netflix.config.DynamicPropertyFactory
@@ -38,15 +38,18 @@ class DebugFilter extends ZuulFilter {
     }
 
     boolean shouldFilter() {
-        if ("true".equals(RequestContext.getCurrentContext().getRequest().getParameter(debugParameter.get()))) return true;
-        return routingDebug.get();
+        if ("true".equals(RequestContext.getCurrentContext().getRequest().getParameter(debugParameter.get()))) {
+            return true
+        }
 
+        return routingDebug.get();
     }
 
     Object run() {
         RequestContext ctx = RequestContext.getCurrentContext()
         ctx.setDebugRouting(true)
         ctx.setDebugRequest(true)
+        ctx.setChunkedRequestBody()
         return null;
     }
 

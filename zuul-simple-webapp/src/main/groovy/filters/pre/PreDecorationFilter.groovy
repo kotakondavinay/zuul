@@ -13,6 +13,7 @@
  *      See the License for the specific language governing permissions and
  *      limitations under the License.
  */
+package filters.pre
 
 import com.netflix.zuul.ZuulFilter
 import com.netflix.zuul.context.RequestContext
@@ -42,7 +43,7 @@ class PreDecorationFilter extends ZuulFilter {
         RequestContext ctx = RequestContext.getCurrentContext()
 
         // sets origin
-        ctx.setRouteHost(new URL("http://apache.org/"));
+        ctx.setRouteHost(new URL("http://httpbin.org"));
 
         // sets custom header to send to the origin
         ctx.addOriginResponseHeader("cache-control", "max-age=3600");

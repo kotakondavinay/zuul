@@ -47,6 +47,9 @@ public class ZuulConstants {
     public static final String ZUUL_FILTER_POST_PATH = "zuul.filter.post.path";
     public static final String ZUUL_FILTER_ROUTING_PATH = "zuul.filter.routing.path";
     public static final String ZUUL_FILTER_CUSTOM_PATH = "zuul.filter.custom.path";
+
+    //This property turns on the admin page. Note that the admin page should be only accessed internally
+    //and should be protected from general access
     public static final String ZUUL_FILTER_ADMIN_ENABLED = "zuul.filter.admin.enabled";
     public static final String ZUUL_FILTER_ADMIN_REDIRECT = "zuul.filter.admin.redirect.path";
 
@@ -67,5 +70,10 @@ public class ZuulConstants {
     public static final String ZUUL_DEBUGFILTERS_DISABLED = "zuul.debugFilters.disabled";
     public static final String ZUUL_DEBUG_VIP = "zuul.debug.vip";
     public static final String ZUUL_DEBUG_HOST = "zuul.debug.host";
+
+    // Prevent instantiation
+    private ZuulConstants() {
+        throw new AssertionError("Must not instantiate constant utility class");
+    }
 
 }

@@ -17,6 +17,7 @@ package com.netflix.zuul;
 
 import com.netflix.config.DynamicBooleanProperty;
 import com.netflix.config.DynamicPropertyFactory;
+import com.netflix.zuul.monitoring.MonitoringHelper;
 import com.netflix.zuul.monitoring.Tracer;
 import com.netflix.zuul.monitoring.TracerFactory;
 import org.junit.Before;
@@ -24,9 +25,13 @@ import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
+import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertSame;
 import static org.mockito.Mockito.*;
 
@@ -50,8 +55,7 @@ import static org.mockito.Mockito.*;
  */
 public abstract class ZuulFilter implements IZuulFilter, Comparable<ZuulFilter> {
 
-    private final DynamicBooleanProperty filterDisabled =
-            DynamicPropertyFactory.getInstance().getBooleanProperty(disablePropertyName(), false);
+    private final AtomicReference<DynamicBooleanProperty> filterDisabledRef = new AtomicReference<>();
 
     /**
      * to classify a filter by type. Standard types in Zuul are "pre" for pre-routing filtering,
@@ -95,7 +99,8 @@ public abstract class ZuulFilter implements IZuulFilter, Comparable<ZuulFilter> 
      * @return
      */
     public boolean isFilterDisabled() {
-        return filterDisabled.get();
+        filterDisabledRef.compareAndSet(null, DynamicPropertyFactory.getInstance().getBooleanProperty(disablePropertyName(), false));
+        return filterDisabledRef.get().get();
     }
 
     /**
@@ -105,7 +110,7 @@ public abstract class ZuulFilter implements IZuulFilter, Comparable<ZuulFilter> 
      */
     public ZuulFilterResult runFilter() {
         ZuulFilterResult zr = new ZuulFilterResult();
-        if (!filterDisabled.get()) {
+        if (!isFilterDisabled()) {
             if (shouldFilter()) {
                 Tracer t = TracerFactory.instance().startMicroTracer("ZUUL::" + this.getClass().getSimpleName());
                 try {
@@ -126,10 +131,21 @@ public abstract class ZuulFilter implements IZuulFilter, Comparable<ZuulFilter> 
     }
 
     public int compareTo(ZuulFilter filter) {
-        return this.filterOrder() - filter.filterOrder();
+        return Integer.compare(this.filterOrder(), filter.filterOrder());
     }
 
     public static class TestUnit {
+
+        static Field field = null;
+        static {
+            try {
+                field = ZuulFilter.class.getDeclaredField("filterDisabledRef");
+                field.setAccessible(true);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+
         @Mock
         private ZuulFilter f1;
         @Mock
@@ -138,6 +154,7 @@ public abstract class ZuulFilter implements IZuulFilter, Comparable<ZuulFilter> 
         @Before
         public void before() {
             MockitoAnnotations.initMocks(this);
+            MonitoringHelper.initMocks();
         }
 
         @Test
@@ -195,6 +212,90 @@ public abstract class ZuulFilter implements IZuulFilter, Comparable<ZuulFilter> 
                 throwable.printStackTrace();
             }
 
+        }
+
+        @Test
+        public void testIsFilterDisabled() {
+            class TestZuulFilter extends ZuulFilter {
+
+                @Override
+                public String filterType() {
+                    return null;
+                }
+
+                @Override
+                public int filterOrder() {
+                    return 0;
+                }
+
+                public boolean isFilterDisabled() {
+                    return false;
+                }
+
+                public boolean shouldFilter() {
+                    return true;
+                }
+
+                public Object run() {
+                    return null;
+                }
+            }
+
+            TestZuulFilter tf1 = spy(new TestZuulFilter());
+            TestZuulFilter tf2 = spy(new TestZuulFilter());
+
+            when(tf1.isFilterDisabled()).thenReturn(false);
+            when(tf2.isFilterDisabled()).thenReturn(true);
+
+            try {
+                tf1.runFilter();
+                tf2.runFilter();
+                verify(tf1, times(1)).run();
+                verify(tf2, times(0)).run();
+            } catch (Throwable throwable) {
+                throwable.printStackTrace();
+            }
+
+        }
+
+        @Test
+        public void testDisabledPropNameOnInit() throws Exception {
+            class TestZuulFilter extends ZuulFilter {
+
+                final String filterType;
+
+                public TestZuulFilter(String filterType) {
+                    this.filterType = filterType;
+                }
+
+                @Override
+                public boolean shouldFilter() {
+                    return false;
+                }
+
+                @Override
+                public Object run() {
+                    return null;
+                }
+
+                @Override
+                public String filterType() {
+                    return filterType;
+                }
+
+                @Override
+                public int filterOrder() {
+                    return 0;
+                }
+            }
+
+            TestZuulFilter filter = new TestZuulFilter("pre");
+            assertFalse(filter.isFilterDisabled());
+
+            @SuppressWarnings("unchecked")
+            AtomicReference<DynamicBooleanProperty> filterDisabledRef = (AtomicReference<DynamicBooleanProperty>) field.get(filter);
+            String filterName = filterDisabledRef.get().getName();
+            assertEquals("zuul.TestZuulFilter.pre.disable", filterName);
         }
 
     }

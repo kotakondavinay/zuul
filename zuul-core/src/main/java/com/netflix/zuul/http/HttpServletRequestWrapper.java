@@ -27,15 +27,11 @@ import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletInputStream;
-import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpSession;
 import java.io.*;
 import java.net.SocketTimeoutException;
 import java.net.URLDecoder;
-import java.security.Principal;
 import java.util.*;
 import java.util.zip.*;
 
@@ -55,7 +51,7 @@ import static org.mockito.Mockito.when;
  *
  * @author pgurov
  */
-public class HttpServletRequestWrapper implements HttpServletRequest {
+public class HttpServletRequestWrapper extends javax.servlet.http.HttpServletRequestWrapper {
 
     private final static HashMap<String, String[]> EMPTY_MAP = new HashMap<String, String[]>();
     protected static final Logger LOG = LoggerFactory.getLogger(HttpServletRequestWrapper.class);
@@ -67,19 +63,23 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
     private long bodyBufferingTimeNs = 0;
 
     public HttpServletRequestWrapper() {
+        super(groovyTrick());
+    }
+
+    private static HttpServletRequest groovyTrick() {
         //a trick for Groovy
         throw new IllegalArgumentException("Please use HttpServletRequestWrapper(HttpServletRequest request) constructor!");
     }
 
     private HttpServletRequestWrapper(HttpServletRequest request, byte[] contentData, HashMap<String, String[]> parameters) {
+        super(request);
         req = request;
         this.contentData = contentData;
         this.parameters = parameters;
     }
 
     public HttpServletRequestWrapper(HttpServletRequest request) {
-        if (request == null)
-            throw new IllegalArgumentException("The HttpServletRequest is null!");
+        super(request);
         req = request;
     }
 
@@ -90,13 +90,14 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
      *
      * @return The wrapped HttpServletRequest.
      */
+    @Override
     public HttpServletRequest getRequest() {
         try {
             parseRequest();
         } catch (IOException e) {
             throw new IllegalStateException("Cannot parse the request!", e);
         }
-        return new HttpServletRequestWrapper(req, contentData, parameters);
+        return req;
     }
 
     /**
@@ -188,7 +189,8 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
                 while (st.hasMoreTokens()) {
                     s = st.nextToken();
                     i = s.indexOf("=");
-                    if (i > 0 && s.length() > i + 1) {
+                    // key and value
+                    if (i > 0) {
                         name = s.substring(0, i);
                         value = s.substring(i + 1);
                         if (decode) {
@@ -207,6 +209,20 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
                             mapA.put(name, list);
                         }
                         list.add(value);
+                    }
+                    // key only
+                    else if (s.length() > 0) {
+                        name = s;
+                        if (decode) {
+                            try {
+                                name = URLDecoder.decode(name, "UTF-8");
+                            } catch (Exception e) {
+                            }
+                        }
+                        if (!mapA.containsKey(name)) {
+                            list = new LinkedList<String>();
+                            mapA.put(name, list);
+                        }
                     }
                 }
             }
@@ -262,6 +278,7 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
      *
      * @return A new ServletInputStream.
      */
+    @Override
     public ServletInputStream getInputStream() throws IOException {
         parseRequest();
 
@@ -275,13 +292,17 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
      *
      * @return A new BufferedReader with the wrapped request's character encoding (or UTF-8 if null).
      */
+    @Override
     public BufferedReader getReader() throws IOException {
         parseRequest();
 
         String enc = req.getCharacterEncoding();
         if (enc == null)
             enc = "UTF-8";
-        return new BufferedReader(new InputStreamReader(new ByteArrayInputStream(contentData), enc));
+        byte[] data = contentData;
+        if (data == null)
+            data = new byte[0];
+        return new BufferedReader(new InputStreamReader(new ByteArrayInputStream(data), enc));
     }
 
     /**
@@ -289,6 +310,7 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
      *
      * @see javax.servlet.ServletRequest#getParameter(java.lang.String)
      */
+    @Override
     public String getParameter(String name) {
         try {
             parseRequest();
@@ -309,6 +331,7 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
      * @see javax.servlet.ServletRequest#getParameterMap()
      */
     @SuppressWarnings("unchecked")
+    @Override
     public Map getParameterMap() {
         try {
             parseRequest();
@@ -324,6 +347,7 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
      * @see javax.servlet.ServletRequest#getParameterNames()
      */
     @SuppressWarnings("unchecked")
+    @Override
     public Enumeration getParameterNames() {
         try {
             parseRequest();
@@ -334,10 +358,12 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
             private String[] arr = getParameters().keySet().toArray(new String[0]);
             private int idx = 0;
 
+            @Override
             public boolean hasMoreElements() {
                 return idx < arr.length;
             }
 
+            @Override
             public String nextElement() {
                 return arr[idx++];
             }
@@ -351,6 +377,7 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
      *
      * @see javax.servlet.ServletRequest#getParameterValues(java.lang.String)
      */
+    @Override
     public String[] getParameterValues(String name) {
         try {
             parseRequest();
@@ -362,349 +389,6 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
         if (arr == null)
             return null;
         return arr.clone();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getAuthType()
-    */
-    public String getAuthType() {
-        return req.getAuthType();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getContextPath()
-    */
-    public String getContextPath() {
-        return req.getContextPath();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getCookies()
-    */
-    public Cookie[] getCookies() {
-        return req.getCookies();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getDateHeader(java.lang.String)
-    */
-    public long getDateHeader(String name) {
-        return req.getDateHeader(name);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getHeader(java.lang.String)
-    */
-    public String getHeader(String name) {
-        return req.getHeader(name);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getHeaderNames()
-    */
-    @SuppressWarnings("unchecked")
-    public Enumeration getHeaderNames() {
-        return req.getHeaderNames();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getHeaders(java.lang.String)
-    */
-    @SuppressWarnings("unchecked")
-    public Enumeration getHeaders(String name) {
-        return req.getHeaders(name);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getIntHeader(java.lang.String)
-    */
-    public int getIntHeader(String name) {
-        return req.getIntHeader(name);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getMethod()
-    */
-    public String getMethod() {
-        return req.getMethod();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getPathInfo()
-    */
-    public String getPathInfo() {
-        return req.getPathInfo();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getPathTranslated()
-    */
-    public String getPathTranslated() {
-        return req.getPathTranslated();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getQueryString()
-    */
-    public String getQueryString() {
-        return req.getQueryString();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getRemoteUser()
-    */
-    public String getRemoteUser() {
-        return req.getRemoteUser();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getRequestURI()
-    */
-    public String getRequestURI() {
-        return req.getRequestURI();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getRequestURL()
-    */
-    public StringBuffer getRequestURL() {
-        return req.getRequestURL();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getRequestedSessionId()
-    */
-    public String getRequestedSessionId() {
-        return req.getRequestedSessionId();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getServletPath()
-    */
-    public String getServletPath() {
-        return req.getServletPath();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getSession()
-    */
-    public HttpSession getSession() {
-        return req.getSession();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getSession(boolean)
-    */
-    public HttpSession getSession(boolean create) {
-        return req.getSession(create);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#getUserPrincipal()
-    */
-    public Principal getUserPrincipal() {
-        return req.getUserPrincipal();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#isRequestedSessionIdFromCookie()
-    */
-    public boolean isRequestedSessionIdFromCookie() {
-        return req.isRequestedSessionIdFromCookie();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#isRequestedSessionIdFromURL()
-    */
-    public boolean isRequestedSessionIdFromURL() {
-        return req.isRequestedSessionIdFromURL();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#isRequestedSessionIdFromUrl()
-    */
-    @SuppressWarnings("deprecation")
-    public boolean isRequestedSessionIdFromUrl() {
-        return req.isRequestedSessionIdFromUrl();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#isRequestedSessionIdValid()
-    */
-    public boolean isRequestedSessionIdValid() {
-        return req.isRequestedSessionIdValid();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.http.HttpServletRequest#isUserInRole(java.lang.String)
-    */
-    public boolean isUserInRole(String role) {
-        return req.isUserInRole(role);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getAttribute(java.lang.String)
-    */
-    public Object getAttribute(String name) {
-        return req.getAttribute(name);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getAttributeNames()
-    */
-    @SuppressWarnings("unchecked")
-    public Enumeration getAttributeNames() {
-        return req.getAttributeNames();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getCharacterEncoding()
-    */
-    public String getCharacterEncoding() {
-        return req.getCharacterEncoding();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getContentLength()
-    */
-    public int getContentLength() {
-        return req.getContentLength();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getContentType()
-    */
-    public String getContentType() {
-        return req.getContentType();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getLocalAddr()
-    */
-    public String getLocalAddr() {
-        return req.getLocalAddr();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getLocalName()
-    */
-    public String getLocalName() {
-        return req.getLocalName();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getLocalPort()
-    */
-    public int getLocalPort() {
-        return req.getLocalPort();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getLocale()
-    */
-    public Locale getLocale() {
-        return req.getLocale();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getLocales()
-    */
-    @SuppressWarnings("unchecked")
-    public Enumeration getLocales() {
-        return req.getLocales();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getProtocol()
-    */
-    public String getProtocol() {
-        return req.getProtocol();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getRealPath(java.lang.String)
-    */
-    @SuppressWarnings("deprecation")
-    public String getRealPath(String path) {
-        return req.getRealPath(path);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getRemoteAddr()
-    */
-    public String getRemoteAddr() {
-        return req.getRemoteAddr();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getRemoteHost()
-    */
-    public String getRemoteHost() {
-        return req.getRemoteHost();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getRemotePort()
-    */
-    public int getRemotePort() {
-        return req.getRemotePort();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getRequestDispatcher(java.lang.String)
-    */
-    public RequestDispatcher getRequestDispatcher(String path) {
-        return req.getRequestDispatcher(path);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getScheme()
-    */
-    public String getScheme() {
-        return req.getScheme();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getServerName()
-    */
-    public String getServerName() {
-        return req.getServerName();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#getServerPort()
-    */
-    public int getServerPort() {
-        return req.getServerPort();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#isSecure()
-    */
-    public boolean isSecure() {
-        return req.isSecure();
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#removeAttribute(java.lang.String)
-    */
-    public void removeAttribute(String name) {
-        req.removeAttribute(name);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#setAttribute(java.lang.String, java.lang.Object)
-    */
-    public void setAttribute(String name, Object value) {
-        req.setAttribute(name, value);
-    }
-
-    /* (non-Javadoc)
-    * @see javax.servlet.ServletRequest#setCharacterEncoding(java.lang.String)
-    */
-    public void setCharacterEncoding(String env)
-            throws UnsupportedEncodingException {
-        req.setCharacterEncoding(env);
     }
 
     public static final class UnitTest {
@@ -785,6 +469,24 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
         }
 
         @Test
+        public void handlesKeyOnlyParams() {
+            when(request.getQueryString()).thenReturn("path=one&key1=val1&three");
+            final HttpServletRequestWrapper w = new HttpServletRequestWrapper(request);
+
+            // getParameters doesn't call parseRequest internally, not sure why
+            // so I'm forcing it here
+            w.getParameterMap();
+
+            final Map<String, String[]> params = w.getParameters();
+            assertFalse("params should not be empty", params.isEmpty());
+            assertEquals("one", params.get("path")[0]);
+            assertEquals("val1", params.get("key1")[0]);
+
+            assertTrue("", params.containsKey("three"));
+            assertEquals("", params.get("three")[0]);
+        }
+
+        @Test
         public void handlesPlainRequestBody() throws IOException {
             final String body = "hello";
             body(body.getBytes());
@@ -842,6 +544,19 @@ public class HttpServletRequestWrapper implements HttpServletRequest {
             final Map params = wrapper.getParameterMap();
             assertTrue(params.containsKey("one"));
             assertTrue(params.containsKey("two"));
+        }
+
+        @Test
+        public void parsesParamsFromFormBodyKeyOnly() throws Exception {
+            method("POST");
+            body("one=1&two=2&three".getBytes());
+            contentType("application/x-www-form-urlencoded");
+
+            final HttpServletRequestWrapper wrapper = new HttpServletRequestWrapper(request);
+            final Map params = wrapper.getParameterMap();
+            assertTrue(params.containsKey("one"));
+            assertTrue(params.containsKey("two"));
+            assertTrue(params.containsKey("three"));
         }
 
         @Test

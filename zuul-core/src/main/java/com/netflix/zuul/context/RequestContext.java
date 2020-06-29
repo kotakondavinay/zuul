@@ -299,7 +299,9 @@ public class RequestContext extends ConcurrentHashMap<String, Object> {
      * appends filter name and status to the filter execution history for the
      * current request
      * 
-     * @param executedFilters - name of the filter
+     * @param name   filter name
+     * @param status execution status
+     * @param time   execution time in milliseconds
      */
     public void addFilterExecutionSummary(String name, String status, long time) {
             StringBuilder sb = getFilterExecutionSummary();
@@ -366,7 +368,7 @@ public class RequestContext extends ConcurrentHashMap<String, Object> {
     }
 
     /**
-     * If this value if true then the response should be sent to the client.
+     * If this value is true then the response should be sent to the client.
      *
      * @return
      */
@@ -477,8 +479,8 @@ public class RequestContext extends ConcurrentHashMap<String, Object> {
      *
      * @return the content-length of the origin response
      */
-    public Integer getOriginContentLength() {
-        return (Integer) get("originContentLength");
+    public Long getOriginContentLength() {
+        return (Long) get("originContentLength");
     }
 
     /**
@@ -486,7 +488,7 @@ public class RequestContext extends ConcurrentHashMap<String, Object> {
      *
      * @param v
      */
-    public void setOriginContentLength(Integer v) {
+    public void setOriginContentLength(Long v) {
         set("originContentLength", v);
     }
 
@@ -497,7 +499,7 @@ public class RequestContext extends ConcurrentHashMap<String, Object> {
      */
     public void setOriginContentLength(String v) {
         try {
-            final Integer i = Integer.valueOf(v);
+            final Long i = Long.valueOf(v);
             set("originContentLength", i);
         } catch (NumberFormatException e) {
             LOG.warn("error parsing origin content length", e);

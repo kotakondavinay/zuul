@@ -51,6 +51,7 @@ public class ZuulServletFilter implements Filter {
 
     private ZuulRunner zuulRunner;
 
+    @Override
     public void init(FilterConfig filterConfig) throws ServletException {
 
         String bufferReqsStr = filterConfig.getInitParameter("buffer-requests");
@@ -59,7 +60,12 @@ public class ZuulServletFilter implements Filter {
         zuulRunner = new ZuulRunner(bufferReqs);
     }
 
+    @Override
     public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException {
+        // Marks this request as having passed through the "Zuul engine", as opposed to servlets
+        // explicitly bound in web.xml, for which requests will not have the same data attached
+        RequestContext context = RequestContext.getCurrentContext();
+        context.setZuulEngineRan();
         try {
             init((HttpServletRequest) servletRequest, (HttpServletResponse) servletResponse);
             try {
@@ -69,7 +75,13 @@ public class ZuulServletFilter implements Filter {
                 postRouting();
                 return;
             }
-            filterChain.doFilter(servletRequest, servletResponse);
+            
+            // Only forward onto to the chain if a zuul response is not being sent
+            if (!RequestContext.getCurrentContext().sendZuulResponse()) {
+                filterChain.doFilter(servletRequest, servletResponse);
+                return;
+            }
+            
             try {
                 routing();
             } catch (ZuulException e) {
@@ -109,11 +121,10 @@ public class ZuulServletFilter implements Filter {
     void error(ZuulException e) {
         RequestContext.getCurrentContext().setThrowable(e);
         zuulRunner.error();
-        e.printStackTrace();
     }
 
+    @Override
     public void destroy() {
-
     }
 
 

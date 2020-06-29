@@ -15,14 +15,17 @@
  */
 package com.netflix.zuul.util;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.when;
 
 import java.net.URLDecoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +33,10 @@ import java.util.StringTokenizer;
 
 import javax.servlet.http.HttpServletRequest;
 
+import org.junit.Before;
 import org.junit.Test;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 
 import com.netflix.zuul.context.RequestContext;
 
@@ -154,7 +160,7 @@ public class HTTPRequestUtils {
 
         HttpServletRequest request = RequestContext.getCurrentContext().getRequest();
 
-        qp = new HashMap<String, List<String>>();
+        qp = new LinkedHashMap<String, List<String>>();
 
         if (request.getQueryString() == null) return null;
         StringTokenizer st = new StringTokenizer(request.getQueryString(), "&");
@@ -163,7 +169,7 @@ public class HTTPRequestUtils {
         while (st.hasMoreTokens()) {
             String s = st.nextToken();
             i = s.indexOf("=");
-            if (i > 0 && s.length() > i + 1) {
+            if (i > 0 && s.length() >= i + 1) {
                 String name = s.substring(0, i);
                 String value = s.substring(i + 1);
 
@@ -183,6 +189,24 @@ public class HTTPRequestUtils {
                 }
 
                 valueList.add(value);
+            }
+            else if (i == -1)
+            {
+                String name=s;
+                String value="";
+                try {
+                    name = URLDecoder.decode(name, "UTF-8");
+                } catch (Exception e) {
+                }
+               
+                List<String> valueList = qp.get(name);
+                if (valueList == null) {
+                    valueList = new LinkedList<String>();
+                    qp.put(name, valueList);
+                }
+
+                valueList.add(value);
+                
             }
         }
 
@@ -222,6 +246,26 @@ public class HTTPRequestUtils {
 
     public static class UnitTest {
 
+        @Mock
+        private RequestContext mockContext;
+        @Mock
+        private HttpServletRequest request;
+
+        private Map<String, List<String>> qp;
+
+        private LinkedList<String> blankValue;
+
+        @Before
+        public void before() {
+            MockitoAnnotations.initMocks(this);
+            blankValue = new LinkedList<String>();
+            blankValue.add("");
+
+            RequestContext.testSetCurrentContext(mockContext);
+            when(mockContext.getRequestQueryParams()).thenReturn(null);
+            when(mockContext.getRequest()).thenReturn(request);
+        }
+
         @Test
         public void detectsGzip() {
             assertTrue(HTTPRequestUtils.getInstance().isGzipped("gzip"));
@@ -235,6 +279,36 @@ public class HTTPRequestUtils {
         @Test
         public void detectsGzipAmongOtherEncodings() {
             assertTrue(HTTPRequestUtils.getInstance().isGzipped("gzip, deflate"));
+        }
+
+        @Test
+        public void testGetQueryParams() {
+            when(request.getQueryString()).thenReturn("wsdl");
+            
+            qp = HTTPRequestUtils.getInstance().getQueryParams();
+            assertEquals(blankValue, qp.get("wsdl"));
+            
+            when(request.getQueryString()).thenReturn("wsdl=");
+            
+            qp = HTTPRequestUtils.getInstance().getQueryParams();
+            assertEquals(blankValue, qp.get("wsdl"));
+
+            when(request.getQueryString()).thenReturn("a=123&b=234&b=345&c&d=");
+            
+            qp = HTTPRequestUtils.getInstance().getQueryParams();
+            assertEquals("123", qp.get("a").get(0));
+            assertEquals("234", qp.get("b").get(0)); 
+            assertEquals("345", qp.get("b").get(1));
+            assertEquals(blankValue, qp.get("c"));
+            assertEquals(blankValue, qp.get("d"));
+        }
+
+        @Test
+        public void testGetQueryParamsOrderIsPreserved() {
+            when(request.getQueryString()).thenReturn("WSDL&interface=Foo&part=FooImpl.wsdl");
+
+            qp = HTTPRequestUtils.getInstance().getQueryParams();
+            assertEquals("WSDL", qp.keySet().iterator().next());
         }
     }
 
